@@ -1,0 +1,21 @@
+FROM frekele/gradle:3.2.1-jdk8
+MAINTAINER SPS Commerce Internal Apps Team
+
+RUN mkdir -p /root/app
+WORKDIR /root/app
+
+COPY build.gradle .
+COPY gradle.properties .
+COPY gradlew .
+COPY gradlew.bat .
+
+RUN mkdir src
+RUN mkdir src/test
+RUN mkdir src/test/resources
+RUN mkdir src/test/resources/mockito-extensions
+COPY src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker /root/app/src/test/resources/mockito-extensions/
+RUN mkdir src/test/kotlin
+RUN mkdir src/test/kotlin/functional
+COPY src/test/kotlin/functional/DeployTest.kt /root/app/src/test/kotlin/functional
+
+ENTRYPOINT gradle clean test

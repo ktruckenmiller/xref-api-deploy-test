@@ -1,0 +1,177 @@
+import java.time.LocalDateTime
+
+apply plugin: 'java'
+apply plugin: 'kotlin'
+apply plugin: 'application'
+apply plugin: 'maven'
+apply plugin: 'gradle-one-jar'
+
+group 'com.spscommerce'
+version '1.0'
+ext.vendor = 'SPS Commerce'
+mainClassName = "com.spscommerce.xrefapi.Application"
+
+sourceSets {
+    main {
+        java {
+            srcDirs 'generated/main/java'
+        }
+    }
+}
+
+run {
+    args = ["server", "conf/conf.yaml"]
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '3.1'
+    distributionUrl = "https://services.gradle.org/distributions/gradle-$gradleVersion-all.zip"
+}
+
+
+buildscript {
+    // depending on aws sdk because the http client version conflicts with dropwizard
+    ext.kotlin_version = '1.1.1'
+    ext.dropwizard_version = '1.1.0'
+    ext.aws_sdk_version = '1.11.82'
+
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.github.rholder:gradle-one-jar:1.0.4'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'kotlin'
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven { url "https://repo1.maven.org/maven2" }
+    maven { url "https://repository.apache.org/snapshots/" }
+    maven {
+        url "https://spscommerceinc.jfrog.io/spscommerceinc/java-releases/"
+        credentials {
+            username = artifactoryUser
+            password = artifactoryPassword
+        }
+    }
+    maven {
+        url "https://spscommerceinc.jfrog.io/spscommerceinc/ext-releases-local/"
+        credentials {
+            username = artifactoryUser
+            password = artifactoryPassword
+        }
+    }
+    maven {
+        url "https://spscommerceinc.jfrog.io/spscommerceinc/jcenter"
+        credentials {
+            username = artifactoryUser
+            password = artifactoryPassword
+        }
+    }
+}
+
+configurations {
+    querydslGen // Dependencies used to generate querydsl entity files from a database schema
+}
+
+dependencies {
+    querydslGen("com.querydsl:querydsl-sql:4.1.3",
+            "com.querydsl:querydsl-sql-codegen:4.1.3",
+            'postgresql:postgresql:9.4.1208-jdbc42-atlassian-hosted',
+            'org.slf4j:slf4j-simple:1.7.19'
+    )
+
+    testCompile group: 'junit', name: 'junit', version: '4.11'
+    testCompile group: 'org.hamcrest', name: 'java-hamcrest', version: '2.0.0.0'
+    testCompile group: 'org.hamcrest', name: 'hamcrest-junit', version: '2.0.0.0'
+    testCompile group: 'io.dropwizard', name: 'dropwizard-testing', version: "$dropwizard_version"
+    testCompile group: 'org.mockito', name: 'mockito-core', version: '2.7.1'
+    compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    compile group: 'io.dropwizard', name: 'dropwizard-auth', version: "$dropwizard_version"
+    compile group: 'io.dropwizard', name: 'dropwizard-core', version: "$dropwizard_version"
+    compile group: 'io.dropwizard', name: 'dropwizard-client', version: "$dropwizard_version"
+    compile group: 'io.dropwizard', name: 'dropwizard-views', version: "$dropwizard_version"
+    compile group: 'io.dropwizard', name: 'dropwizard-views-freemarker', version: "$dropwizard_version"
+    compile group: 'io.dropwizard', name: 'dropwizard-db', version: "$dropwizard_version"
+    compile group: 'io.dropwizard', name: 'dropwizard-jdbi', version: "$dropwizard_version"
+    compile group: 'io.dropwizard', name: 'dropwizard-forms', version: "$dropwizard_version"
+    compile("io.swagger:swagger-jaxrs:1.5.6") {
+        exclude group: "javax.ws.rs", module: "jsr311-api"
+    }
+    compile group: 'postgresql', name: 'postgresql', version: '9.4.1208-jdbc42-atlassian-hosted'
+    compile group: 'com.jessecoyle', name: 'jcredstash', version: '1.1'
+    compile group: 'com.querydsl', name: 'querydsl-core', version: '4.1.4'
+    compile group: 'com.querydsl', name: 'querydsl-collections', version: '4.1.4'
+    compile group: 'com.querydsl', name: 'querydsl-sql', version: '4.1.4'
+    compile group: 'commons-collections', name: 'commons-collections', version: '3.2'
+    compile group: 'com.h2database', name: 'h2', version: '1.3.148'
+    compile group: 'org.json', name: 'json', version: '20090211'
+    compile group: 'joda-time', name: 'joda-time', version: '2.9.9'
+    compile "com.amazonaws:aws-java-sdk-dynamodb:$aws_sdk_version"
+    compile "com.amazonaws:aws-java-sdk-core:$aws_sdk_version"
+}
+
+jar {
+    manifest {
+        attributes(
+                "Manifest-Version": "1.0",
+                "Created-By": vendor,
+                "Specification-Title": rootProject.name,
+                "Specification-Version": version,
+                "Specification-Vendor": vendor,
+                "Implementation-Title": rootProject.name,
+                "Implementation-Version": version,
+                "Implementation-Vendor": vendor,
+                "Build-Time": LocalDateTime.now().toString(),
+                "Main-Class": mainClassName,
+                "Class-Path": configurations.runtime.collect { "lib/" + it.getName() }.join(' ')
+        )
+    }
+}
+
+task generateQuerydsl {
+    doLast {
+        ant.taskdef(name: 'generateQueryDSL', classname: 'com.querydsl.sql.codegen.ant.AntMetaDataExporter', classpath: configurations.querydslGen.asPath)
+        ant.generateQueryDSL(
+                jdbcDriver: "org.postgresql.Driver",
+                jdbcUrl: "jdbc:postgresql://xref.db.svc.spstest.in:5432/xts",
+                jdbcUser: "xrefapi_app_rw",
+                jdbcPassword: "TESTPASSWORD",
+                tableNamePattern: "%",
+                packageName: 'com.spscommerce.entities',
+                targetFolder: 'generated/main/java',
+                exportBeans: false)
+    }
+}
+
+task copyRuntimeLibs(type: Copy) {
+    into "build/lib"
+    from configurations.testRuntime - configurations.runtime
+}
+
+distributions {
+    app {
+        contents {
+            from jar
+            from "setMemory.sh"
+            into("lib") {
+                from configurations.runtime
+            }
+        }
+    }
+}
+
+task oneJar(type: OneJar) {
+    mainClass = mainClassName
+}
+
+artifacts {
+    oneJar
+}
